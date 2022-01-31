@@ -1,5 +1,6 @@
 #  coding: utf-8 
 import socketserver
+import os
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -32,11 +33,53 @@ class MyWebServer(socketserver.BaseRequestHandler):
     def handle(self):
         self.data = self.request.recv(1024).strip()
         print ("Got a request of: %s\n" % self.data)
-        self.request.sendall(bytearray("OK",'utf-8'))
+        
+        method = self.data.decode('utf-8').splitlines()[0].split()[0]
+        path = self.data.decode('utf-8').splitlines()[0].split()[1]
+        file_path = './www' + path 
+        
+        if path.endswith('/'):
+            file_path = file_path + 'index.html'
+
+        if method != 'GET':  
+            response = 'HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n'
+        elif os.path.isdir(file_path) and not path.endswith('/'):
+            response = 'HTTP/1.1 301 Moved Permanently\r\nLocation: {}\r\n'.format(path)
+        elif os.path.isfile(file_path):
+            mime_type = self.get_mime_type(file_path)
+            if mime_type != None:
+                content = self.get_file_content(file_path)
+                if content != 'I/OError':
+                    response = 'HTTP/1.1 200 OK\r\nContent-Type: {}\r\n{}\r\n'.format(mime_type, content)
+                else:
+                    response = 'HTTP/1.1 404 Not Found\r\nConnection: close\r\n'
+            else:
+                response = 'HTTP/1.1 404 Not Found\r\nConnection: close\r\n'
+        else:
+            response = 'HTTP/1.1 404 Not Found\r\nConnection: close\r\n'
+
+        self.request.sendall(bytearray(response,'utf-8'))
+
+    def get_mime_type(self, path):
+        mime_type = os.path.splitext(path)[1]
+        if mime_type == '.html':
+            return 'text/html'
+        elif mime_type == '.css':
+            return 'text/css'
+        else:
+            return None
+
+    def get_file_content(self, path):
+        try:
+            file_ = open(path, 'r')
+            content = file_.read()
+            file_.close()
+            return content
+        except Exception:
+            content = 'I/OError'
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
-
     socketserver.TCPServer.allow_reuse_address = True
     # Create the server, binding to localhost on port 8080
     server = socketserver.TCPServer((HOST, PORT), MyWebServer)
